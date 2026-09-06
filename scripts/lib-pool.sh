@@ -128,6 +128,24 @@ for a in json.load(sys.stdin):
   done
 }
 
+# "<name>\t<size in bytes>" per asset. pool-notes.sh prints a size beside every
+# download link, and the API hands it over with the listing -- reading it off
+# the file would mean fetching the file, on a release whose counters are the
+# whole reason the packages are up here.
+pool_asset_sizes() {
+  local id="$1" page=1 code chunk
+  while :; do
+    code="$(gh_api GET "${pool_api}/releases/${id}/assets?per_page=100&page=${page}")"
+    [ "${code}" = "200" ] || pool_fail "could not list the release assets (HTTP ${code})"
+    chunk="$(pool_json 'import json,sys
+for a in json.load(sys.stdin):
+    print(a["name"], a["size"], sep="\t")')"
+    [ -n "${chunk}" ] || break
+    printf '%s\n' "${chunk}"
+    page=$(( page + 1 ))
+  done
+}
+
 # "<name>\t<label>" per asset. pool-assets.sh writes each metadata asset's own
 # sha256 into its label, so a later run can tell whether the bytes changed
 # without downloading the copy that is up there -- which would have counted as

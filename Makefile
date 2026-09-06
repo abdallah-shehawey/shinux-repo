@@ -24,6 +24,9 @@ bump:  ## bump a version: make bump PKG=hello-shinux LEVEL=patch
 prune:  ## keep only the newest KEEP=3 versions of each package
 	@scripts/prune.sh $(or $(KEEP),3)
 
+notes:  ## rewrite the pool release's description from what is attached to it
+	@scripts/pool-notes.sh
+
 serve:  ## serve docs/ on http://127.0.0.1:8099 for manual testing
 	@scripts/serve.sh
 
@@ -42,4 +45,4 @@ clean:  ## remove build artefacts (docs/ is left alone)
 	@rm -rf build
 	@echo "cleaned build/"
 
-.PHONY: help key icons build publish bump prune serve test test-fedora test-debian test-arch clean
+.PHONY: help key icons build publish bump prune notes serve test test-fedora test-debian test-arch clean

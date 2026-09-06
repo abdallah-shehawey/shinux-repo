@@ -125,6 +125,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/pool-assets.sh --require
 
+      # The attachment list GitHub renders is alphabetical and cannot be
+      # grouped, so a hundred assets read as one flat run of filenames. This
+      # rewrites the release description into an index of them -- a section per
+      # package, a list per distribution -- from the API listing alone, so it
+      # downloads nothing and moves no counter. After the upload above, or the
+      # version this run just built is described by nothing.
+      - name: Describe what the pool now holds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/pool-notes.sh --require
+
       # The Pages artifact has a 1 GB ceiling. whatsapp-desktop bundles Electron, so
       # every version of it costs 225 MB across rpm + deb + arch -- at twenty
       # versions docs/ had reached 4.19 GB and Pages was deploying it under
