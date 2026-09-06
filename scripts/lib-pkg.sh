@@ -289,7 +289,17 @@ build_deb() {
 
   local deb_stage; deb_stage="$(mktemp -d)"
   cp -a "$work/." "$deb_stage/"
+  # The umask the build ran under is nobody's business but that build's, so the
+  # modes are normalised here. `u=rwX` takes the setuid bit down with them --
+  # and a tree that ships one means it: Chromium's sandbox helper is setuid
+  # root, and a client without it does not start on a distribution that confines
+  # unprivileged user namespaces, which is every Ubuntu since 24.04. Note the
+  # special modes before the sweep and lay them back afterwards.
+  local special; special="$(find "$deb_stage" -type f -perm /6000 -printf '%m %P\n')"
   chmod -R u=rwX,go=rX "$deb_stage"
+  while read -r mode path; do
+    [ -n "$mode" ] && chmod "$mode" "$deb_stage/$path"
+  done <<< "$special"
   chmod 0755 "$deb_stage/DEBIAN"
   [ -f "$deb_stage/DEBIAN/control" ] && chmod 0644 "$deb_stage/DEBIAN/control"
   [ -f "$deb_stage/DEBIAN/md5sums" ] && chmod 0644 "$deb_stage/DEBIAN/md5sums"
