@@ -21,6 +21,12 @@ BASE_URL="${BASE_URL:-https://${GITHUB_USER}.github.io/${GITHUB_REPO}}"
 # well and primary.xml carries an xml:base pointing at them -- metadata, keys
 # and signatures still come from Pages, and no client configuration changes.
 POOL_TAG="${POOL_TAG:-pool}"
+
+# What that release is called on the repository's front page. The tag stays
+# "pool" for ever -- every package URL ever published has it in the path, and
+# rpm metadata on installed machines names it -- but the title is read by
+# people only, and "pool" is this repository's word for it, not theirs.
+POOL_TITLE="${POOL_TITLE:-Packages}"
 ASSET_ROOT="${ASSET_ROOT:-https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases/download}"
 ASSET_BASE="${ASSET_BASE:-${ASSET_ROOT}/${POOL_TAG}}"
 
@@ -79,7 +85,7 @@ KEY_GPG="${OUT_DIR}/${REPO_ID}.gpg"           # dearmored, used by apt signed-by
 GNUPGHOME_DIR="${ROOT_DIR}/.gnupg"
 
 export GITHUB_USER GITHUB_REPO REPO_ID REPO_NAME BASE_URL \
-       POOL_TAG ASSET_ROOT ASSET_BASE ASSET_POOL POOL_META_DIR \
+       POOL_TAG POOL_TITLE ASSET_ROOT ASSET_BASE ASSET_POOL POOL_META_DIR \
        MAINTAINER_NAME MAINTAINER_EMAIL GPG_KEY_UID PACKAGE_VENDOR \
        DEB_ARCHS DEB_SUITE DEB_COMPONENT \
        ROOT_DIR BUILD_DIR OUT_DIR RPM_DIR DEB_DIR ARCH_DIR KEY_ASC KEY_GPG GNUPGHOME_DIR

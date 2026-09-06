@@ -52,7 +52,7 @@ if [ -z "${release_id}" ]; then
     --data @- <<JSON
 {
   "tag_name": "${POOL_TAG}",
-  "name": "Package pool",
+  "name": "${POOL_TITLE}",
   "body": "Every package published by ${REPO_NAME}, kept here rather than in git so that a clone of this repository stays small, and so that GitHub can count what dnf downloads.\n\nThese are the same signed files the repository serves. Install them through the repository rather than by hand:\n\n    curl -fsSL ${BASE_URL}/install.sh | sudo sh",
   "draft": false,
   "prerelease": false,

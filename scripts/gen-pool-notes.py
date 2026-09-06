@@ -14,9 +14,9 @@ exactly as GitHub renders it.
 
 Reads two TSV files -- the asset list, and the summary of each package -- both
 collected by pool-notes.sh, and prints markdown on stdout. Nothing here touches
-the network: the sizes come from the API listing rather than from the files,
-because downloading a package to measure it would move the counter that is the
-whole reason the packages are attached here at all.
+the network: sizes and download counts both come from the API listing rather
+than from the files, because downloading a package to measure it would move the
+very counter printed beside it.
 
     gen-pool-notes.py <assets.tsv> <summaries.tsv>
 """
@@ -31,6 +31,12 @@ METADATA = {
     "Packages", "Packages.gz", "Release", "Release.gpg", "InRelease",
     "{id}.db", "{id}.db.sig", "{id}.files", "{id}.files.sig",
 }
+
+# Listed before everything else, in this order. The rest follow alphabetically.
+# whatsapp-desktop is what almost everyone who opens this release came for --
+# it is the only package here anyone finds from outside the repository -- and
+# alphabetical order buried it at the bottom behind twelve shell scripts.
+FEATURED = ("whatsapp-desktop",)
 
 # The label each format is filed under, and the command that installs from it.
 # Ordered rpm-deb-arch rather than alphabetically: it is the order the rest of
@@ -91,7 +97,10 @@ def main():
     base_url = os.environ.get("BASE_URL", "")
     metadata = {name.format(id=repo_id) for name in METADATA}
 
-    assets = {name: (url, int(size)) for name, url, size in read_tsv(sys.argv[1])}
+    assets = {
+        name: (url, int(size), int(downloads))
+        for name, url, size, downloads in read_tsv(sys.argv[1])
+    }
     summaries = dict(read_tsv(sys.argv[2])) if len(sys.argv) > 2 else {}
 
     # name -> format -> [(sort key, version, filename)]
@@ -128,8 +137,14 @@ def main():
         "sorts the attachment list itself alphabetically and cannot group it, "
         "which is the only reason this index exists.")
     add("")
+    add("The count beside each file is how many times GitHub has served it, "
+        "which includes every `dnf`, `apt` and `pacman` install: the "
+        "repository points those clients straight at these assets, because "
+        "GitHub Pages counts nothing at all.")
+    add("")
 
-    names = sorted(packages)
+    names = [name for name in FEATURED if name in packages]
+    names += sorted(name for name in packages if name not in FEATURED)
     add("**Jump to:** " + " · ".join(f"[{n}](#{n})" for n in names))
     add("")
 
@@ -159,9 +174,10 @@ def main():
             add("")
             builds.sort(key=lambda build: build[0], reverse=True)
             for index, (_, version, filename) in enumerate(builds):
-                url, size = assets[filename]
+                url, size, downloads = assets[filename]
+                pulls = f"{downloads} download" + ("" if downloads == 1 else "s")
                 newest = " — **newest**" if index == 0 else ""
-                add(f"- `{version}` · [{filename}]({url}) · {human(size)}{newest}")
+                add(f"- `{version}` · [{filename}]({url}) · {human(size)} · {pulls}{newest}")
             add("")
 
     add("---")

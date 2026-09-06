@@ -128,18 +128,19 @@ for a in json.load(sys.stdin):
   done
 }
 
-# "<name>\t<size in bytes>" per asset. pool-notes.sh prints a size beside every
-# download link, and the API hands it over with the listing -- reading it off
-# the file would mean fetching the file, on a release whose counters are the
-# whole reason the packages are up here.
-pool_asset_sizes() {
+# "<name>\t<size in bytes>\t<download count>" per asset. pool-notes.sh prints
+# both beside every download link, and the API hands them over with the listing
+# -- reading the size off the file would mean fetching the file, and moving the
+# very counter printed next to it, on a release whose counters are the whole
+# reason the packages are up here.
+pool_asset_stats() {
   local id="$1" page=1 code chunk
   while :; do
     code="$(gh_api GET "${pool_api}/releases/${id}/assets?per_page=100&page=${page}")"
     [ "${code}" = "200" ] || pool_fail "could not list the release assets (HTTP ${code})"
     chunk="$(pool_json 'import json,sys
 for a in json.load(sys.stdin):
-    print(a["name"], a["size"], sep="\t")')"
+    print(a["name"], a["size"], a["download_count"], sep="\t")')"
     [ -n "${chunk}" ] || break
     printf '%s\n' "${chunk}"
     page=$(( page + 1 ))

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rewrite the "pool" release's description into an index of what is attached.
+# Rewrite the "pool" release's title and description from what is attached.
 #
 # The packages live in that release's assets, and GitHub renders an asset list
 # alphabetically with no grouping of any kind: every version of every package,
@@ -19,7 +19,7 @@
 # Run it AFTER pool-assets.sh, or the version this run just built is described
 # by nothing.
 #
-#   scripts/pool-notes.sh             rewrite the description; skip with no token
+#   scripts/pool-notes.sh             rewrite title + description; skip with no token
 #   scripts/pool-notes.sh --require   fail instead of skipping (what CI wants)
 #   scripts/pool-notes.sh --print     print the description, change nothing
 set -euo pipefail
@@ -56,9 +56,9 @@ trap 'rm -rf "${work}"' EXIT
 # Two listings joined rather than one: pool_assets is read elsewhere with a
 # two-field `read`, so a third column there would silently land inside the URL.
 pool_assets      "${release_id}" > "${work}/urls.tsv"
-pool_asset_sizes "${release_id}" > "${work}/sizes.tsv"
-awk -F'\t' 'NR==FNR { size[$1] = $2; next } { print $1 "\t" $2 "\t" size[$1] }' \
-    "${work}/sizes.tsv" "${work}/urls.tsv" > "${work}/assets.tsv"
+pool_asset_stats "${release_id}" > "${work}/stats.tsv"
+awk -F'\t' 'NR==FNR { stat[$1] = $2 "\t" $3; next } { print $1 "\t" $2 "\t" stat[$1] }' \
+    "${work}/stats.tsv" "${work}/urls.tsv" > "${work}/assets.tsv"
 
 # --------------------------------------------------- what each package is ---
 # The one-line summary already written for the package manager, reused for the
@@ -89,24 +89,30 @@ if [ "${print_only}" -eq 1 ]; then
   exit 0
 fi
 
-# Only when it actually changed. A publish that rewrites an identical
+# The title comes along, so this script owns everything about the release that
+# a person reads. pool-assets.sh names it at creation, but that fires once and
+# never again -- a release created under an older title would keep it for ever
+# otherwise.
+#
+# Only when something actually changed. A publish that rewrites an identical
 # description edits the release for nothing, and GitHub shows an edit as an
 # edit.
 code="$(gh_api GET "${pool_api}/releases/${release_id}")"
 [ "${code}" = "200" ] || pool_fail "could not read the ${POOL_TAG} release (HTTP ${code})"
 pool_json 'import json,sys; sys.stdout.write(json.load(sys.stdin).get("body") or "")' > "${work}/current.md"
+current_title="$(pool_json 'import json,sys; sys.stdout.write(json.load(sys.stdin).get("name") or "")')"
 
-if cmp -s "${work}/current.md" "${work}/body.md"; then
-  info "the ${POOL_TAG} description already matches the pool"
+if [ "${current_title}" = "${POOL_TITLE}" ] && cmp -s "${work}/current.md" "${work}/body.md"; then
+  info "the ${POOL_TAG} release already matches what is attached to it"
   exit 0
 fi
 
-python3 -c 'import json,sys; json.dump({"body": open(sys.argv[1]).read()}, sys.stdout)' \
-    "${work}/body.md" > "${work}/patch.json"
+python3 -c 'import json,sys; json.dump({"name": sys.argv[1], "body": open(sys.argv[2]).read()}, sys.stdout)' \
+    "${POOL_TITLE}" "${work}/body.md" > "${work}/patch.json"
 
 code="$(gh_api PATCH "${pool_api}/releases/${release_id}" \
         --header "Content-Type: application/json" \
         --data @"${work}/patch.json")"
-[ "${code}" = "200" ] || pool_fail "could not update the ${POOL_TAG} description (HTTP ${code})"
+[ "${code}" = "200" ] || pool_fail "could not update the ${POOL_TAG} release (HTTP ${code})"
 
-info "rewrote the ${POOL_TAG} description ($(wc -l < "${work}/body.md") lines)"
+info "rewrote \"${POOL_TITLE}\" ($(wc -l < "${work}/body.md") lines)"
