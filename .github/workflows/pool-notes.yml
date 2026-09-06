@@ -1,0 +1,40 @@
+name: Refresh the pool index
+
+# The description of the "pool" release carries a download count beside every
+# file, and a count on a page only moves when something rewrites the page.
+# publish.yml already does that at the end of every publish -- but a publish
+# happens when a package changes, which is days apart and sometimes weeks,
+# while the counters tick every time anyone runs `dnf install`. Left to
+# publishes alone the numbers would be a snapshot of whenever the last package
+# happened to change, which is exactly what they look least like.
+#
+# So: once a day, and on demand. It builds nothing, signs nothing and
+# downloads nothing -- names, sizes and counts all come back with a single API
+# listing -- and pool-notes.sh patches the release only when something actually
+# differs, so a day with no installs and no new version is a no-op.
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write   # pool-notes.sh patches the release's title and body
+
+concurrency:
+  group: pool-notes
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Rewrite the release index
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      # packages/*/metadata.env is where the per-package summaries come from,
+      # so this needs the tree, not just a token.
+      - name: Refresh the index
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/pool-notes.sh --require
