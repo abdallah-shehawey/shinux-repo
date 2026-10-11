@@ -368,22 +368,9 @@ for candidate in antigravity-update antigravity-update.sh; do
     fi
 done
 
-# Where the IDE lives, for the case where the updater is missing and cannot be
-# asked. Same three prefixes antigravity-update itself looks in.
-antigravity_installed() {
-    command -v antigravity     &> /dev/null && return 0
-    command -v antigravity-ide &> /dev/null && return 0
-    local dir
-    for dir in /usr/share/antigravity-ide /opt/antigravity-ide \
-               "${XDG_DATA_HOME:-$HOME/.local/share}/antigravity-ide"; do
-        [[ -f "$dir/resources/app/product.json" ]] && return 0
-    done
-    return 1
-}
-
-# Nothing about Antigravity is reported unless the IDE is actually installed.
-# Someone who does not use it should not see a step for it at all, whether or
-# not the updater happens to be on their PATH.
+# The step exists only when both the updater and the IDE are here. Without the
+# updater there is nothing this run can do about the IDE, so it says nothing -
+# the same as for Snap, Flatpak or firmware on a machine without them.
 if [[ -n "$AG_UPDATER" ]]; then
     # --check exits 4 before touching the network when nothing is installed.
     "$AG_UPDATER" --check >/dev/null 2>&1
@@ -394,11 +381,6 @@ if [[ -n "$AG_UPDATER" ]]; then
         4) : ;;   # not installed: not this machine's concern
         *) skip_step "Antigravity IDE" "version check failed (exit $ag_status)" ;;
     esac
-elif antigravity_installed; then
-    # The IDE is here but its updater is not, so this run would quietly leave it
-    # behind - which is worse than saying so. It is one package away from
-    # working again, so the summary names it instead of hiding the whole step.
-    skip_step "Antigravity IDE" "antigravity-update not installed - ${PM##*/} install antigravity-update"
 fi
 
 
@@ -433,11 +415,23 @@ if [[ "$FAMILY" == rpm ]]; then
         fi
     fi
 
-    # --refresh downloads every repository's metadata. A retry does not need a
-    # second copy of it: it is already as fresh as this run is going to make it,
-    # and on a slow line re-downloading it is the most expensive part of the
-    # attempt. So only the first attempt refreshes. Metadata that failed to
-    # download is not in the cache and gets fetched anyway.
+    # The metadata is fetched on its own, ahead of the upgrade, and without
+    # dnf5's live progress. dnf5 fetches the repositories in parallel and draws
+    # a line for each one still in flight, then moves the cursor back up over
+    # them to redraw. With thirty-odd repositories that block outgrows a
+    # terminal window of ordinary height, the cursor cannot climb past the top
+    # of the screen, and every redraw pushes the top lines into scrollback -
+    # "Fedora 44 - x86_64 - Updates  100% [=====] | 0.0 B/s" twenty times over.
+    # On a 20-row terminal that was 32 stray lines; with DNF5_FORCE_INTERACTIVE=0
+    # it is none, each repository printed once, when it is done. The upgrade
+    # then finds the cache fresh and keeps its live progress for the package
+    # downloads, which run three at a time by default and fit any window.
+    #
+    # --refresh re-checks every repository. A retry does not need a second
+    # check: the metadata is already as fresh as this run is going to make it,
+    # and on a slow line fetching it again is the most expensive part of the
+    # attempt. So only the first attempt refreshes; a later one fetches just
+    # what is missing, which is whatever failed to download the first time.
     RPM_REFRESHED=false
     rpm_system_update() {
         local refresh=""
@@ -445,7 +439,8 @@ if [[ "$FAMILY" == rpm ]]; then
             refresh="--refresh"
             RPM_REFRESHED=true
         fi
-        sudo "$PM" upgrade -y $refresh $EXCLUDE_NVIDIA
+        sudo env DNF5_FORCE_INTERACTIVE=0 "$PM" makecache -y $refresh || return
+        sudo "$PM" upgrade -y $EXCLUDE_NVIDIA
     }
 
     # Asked after a failed attempt. It re-runs the solve alone: -C keeps it in
@@ -534,11 +529,12 @@ fi
 # 3. Firmware
 # ==============================================================================
 
+# A tool that is not installed gets no step at all - no line while the run goes
+# and no row in the summary. It is not something this run skipped, it is
+# something this machine does not have.
 if command -v fwupdmgr &> /dev/null; then
     retry_command "sudo fwupdmgr refresh --force" "Firmware Metadata Refresh"
     retry_command "sudo fwupdmgr update -y"       "Firmware Update"
-else
-    skip_step "Firmware Update" "fwupdmgr not installed"
 fi
 
 
@@ -548,8 +544,6 @@ fi
 
 if command -v flatpak &> /dev/null; then
     retry_command "flatpak update -y" "Flatpak Update"
-else
-    skip_step "Flatpak Update" "flatpak not installed"
 fi
 
 
@@ -559,8 +553,6 @@ fi
 
 if command -v snap &> /dev/null; then
     retry_command "sudo snap refresh" "Snap Update"
-else
-    skip_step "Snap Update" "snap not installed"
 fi
 
 

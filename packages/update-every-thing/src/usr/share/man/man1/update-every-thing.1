@@ -22,12 +22,14 @@ Antigravity IDE, via
 .BR antigravity\-update (1)
 if it is installed. Its version is checked first, so nothing is downloaded when
 it is already current, and a machine without the IDE is not offered a
-first\-time install in the middle of a bulk update. A machine that has the IDE
-but not the updater is told so, rather than having the step disappear.
+first\-time install in the middle of a bulk update. Without the updater there
+is no step at all.
 .IP 2. 4
 System packages. On rpm systems, one
-.B upgrade \-\-refresh
-that carries the run's single metadata refresh. On deb systems, an
+.B makecache \-\-refresh
+that carries the run's single metadata refresh, then an
+.B upgrade
+from that cache. On deb systems, an
 .B update
 followed by a
 .BR full\-upgrade .
@@ -86,7 +88,8 @@ holds this run adds are released even if you interrupt it.
 Nothing aborts the run. A step that fails is retried a bounded number of times
 and then given up on, so the run always reaches the end and you get one report
 instead of discovering a failure three commands later. A step whose tool is not
-installed is skipped and recorded as such.
+installed \(em Snap, Flatpak, fwupd, antigravity\-update \(em does not appear at
+all, neither while the run goes nor in the summary.
 .PP
 Only failures that could go away on their own are repeated. After a failed
 system update the transaction is re\-solved from the cache alone \(em no
@@ -102,6 +105,15 @@ Neither stdout nor stderr is redirected. That is deliberate: dnf, apt and
 flatpak draw progress on stderr and size it from the terminal, so piping either
 stream costs them the terminal and their progress bars come out duplicated and
 wrapped.
+.PP
+The one place the output is changed is the metadata refresh on dnf5, which runs
+with
+.BR DNF5_FORCE_INTERACTIVE=0 .
+dnf5 fetches every repository in parallel and redraws a line for each one in
+flight; once that block is taller than the terminal window, every redraw leaves
+copies of its top lines in the scrollback. Without the live redraw each
+repository is printed once, when it is done. The package downloads that follow
+keep their live progress.
 .PP
 The sudo timestamp is refreshed in the background for the length of the run, so
 no password prompt appears in the middle of a long download.
