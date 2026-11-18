@@ -415,17 +415,24 @@ if [[ "$FAMILY" == rpm ]]; then
         fi
     fi
 
-    # The metadata is fetched on its own, ahead of the upgrade, and without
-    # dnf5's live progress. dnf5 fetches the repositories in parallel and draws
-    # a line for each one still in flight, then moves the cursor back up over
-    # them to redraw. With thirty-odd repositories that block outgrows a
-    # terminal window of ordinary height, the cursor cannot climb past the top
-    # of the screen, and every redraw pushes the top lines into scrollback -
-    # "Fedora 44 - x86_64 - Updates  100% [=====] | 0.0 B/s" twenty times over.
-    # On a 20-row terminal that was 32 stray lines; with DNF5_FORCE_INTERACTIVE=0
-    # it is none, each repository printed once, when it is done. The upgrade
-    # then finds the cache fresh and keeps its live progress for the package
-    # downloads, which run three at a time by default and fit any window.
+    # The metadata download keeps its live progress, as if you had typed the
+    # command yourself - and since the cleanup at the end of every run empties
+    # the cache, it is the longest download of the step.
+    #
+    # The catch is the shape of that progress. dnf5 starts every enabled
+    # repository at once, whatever max_parallel_downloads says, draws a line
+    # for each one still in flight and moves the cursor back up over them to
+    # redraw. A block taller than the window cannot be climbed back over, so
+    # every redraw pushes its top lines into scrollback - "Fedora 44 - x86_64 -
+    # Updates  100% [=====] | 0.0 B/s" twenty times over. Measured on a pty:
+    # 27 repositories leave 17 stray lines at 20 rows and none at 28.
+    #
+    # So the step looks at the window first. When every repository fits, it
+    # runs the one command you would have typed. When they do not, the metadata
+    # is fetched in batches of as many repositories as the window holds, each
+    # batch with its own live progress, and the upgrade then finds the cache
+    # fresh and keeps its live progress for the package downloads, which run
+    # three at a time by default and fit any window.
     #
     # --refresh re-checks every repository. A retry does not need a second
     # check: the metadata is already as fresh as this run is going to make it,
@@ -433,13 +440,57 @@ if [[ "$FAMILY" == rpm ]]; then
     # attempt. So only the first attempt refreshes; a later one fetches just
     # what is missing, which is whatever failed to download the first time.
     RPM_REFRESHED=false
+
+    # Rows of the window dnf is about to draw in.
+    terminal_rows() {
+        local size
+        size="$(stty size 2>/dev/null </dev/tty)" || return 1
+        [[ "$size" =~ ^([1-9][0-9]*)\ [0-9]+$ ]] || return 1
+        echo "${BASH_REMATCH[1]}"
+    }
+
     rpm_system_update() {
-        local refresh=""
+        local refresh="" rows="" batch=0 i list repos=()
         if [[ "$RPM_REFRESHED" == false ]]; then
             refresh="--refresh"
             RPM_REFRESHED=true
         fi
-        sudo env DNF5_FORCE_INTERACTIVE=0 "$PM" makecache -y $refresh || return
+
+        # Two rows to spare: the line dnf leaves the cursor on, and one for
+        # luck. Output that is not a terminal gets no live progress from dnf
+        # at all, and yum and dnf4 have no `repo list` and draw a single
+        # progress line anyway, so all of those take the plain path.
+        if [[ -t 1 ]] && rows="$(terminal_rows)" \
+                && list="$("$PM" repo list --enabled 2>/dev/null)"; then
+            batch=$(( rows - 2 ))
+            mapfile -t repos < <(awk 'NR > 1 { print $1 }' <<<"$list")
+        fi
+
+        if (( ${#repos[@]} == 0 || ${#repos[@]} <= batch )); then
+            sudo "$PM" upgrade -y $refresh $EXCLUDE_NVIDIA
+            return
+        fi
+
+        if (( batch < 3 )); then
+            # Too small to hold even a few bars: one line per repository, when
+            # it is done.
+            sudo env DNF5_FORCE_INTERACTIVE=0 "$PM" makecache -y $refresh || return
+        else
+            printf '%s   %d repositories, %d rows: fetching metadata %d at a time so its progress fits the window%s\n' \
+                "$C_DIM" "${#repos[@]}" "$rows" "$batch" "$C_RESET"
+            # Not --refresh on each batch: it marks every repository expired,
+            # not just the ones in the batch, so the upgrade would fetch all
+            # the earlier batches a second time. Expiring the cache once up
+            # front is the same refresh, and each batch then fetches only its
+            # own repositories.
+            if [[ -n "$refresh" ]]; then
+                sudo "$PM" clean expire-cache >/dev/null || return
+            fi
+            for (( i = 0; i < ${#repos[@]}; i += batch )); do
+                sudo "$PM" makecache -y \
+                    "--repo=$(IFS=,; echo "${repos[*]:i:batch}")" || return
+            done
+        fi
         sudo "$PM" upgrade -y $EXCLUDE_NVIDIA
     }
 
